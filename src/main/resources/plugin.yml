@@ -1,0 +1,5 @@
+name: MundoHardcore
+version: 1.0.0
+main: com.mundohardcore.MundoHardcore
+api-version: '26.3'
+description: Crea un mundo hardcore nuevo cuando alguien muere y borra el anterior.
