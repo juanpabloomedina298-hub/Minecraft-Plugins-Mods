@@ -25,9 +25,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 /**
@@ -44,6 +47,8 @@ public final class MundoHardcore extends JavaPlugin implements Listener {
     /** Nombre base del grupo de mundos actual. null = todavía se usa el mundo principal del servidor. */
     private String base;
     private boolean creando = false;
+    /** Dónde murió cada jugador mientras espera a que se cree el mundo nuevo. */
+    private final Map<UUID, Location> lugaresDeMuerte = new HashMap<>();
 
     // ------------------------------------------------------------------
     // Arranque
@@ -92,15 +97,36 @@ public final class MundoHardcore extends JavaPlugin implements Listener {
 
     @EventHandler
     public void alMorir(PlayerDeathEvent e) {
+        Player p = e.getEntity();
+        lugaresDeMuerte.put(p.getUniqueId(), p.getLocation().clone());
+
+        // Reaparece solo (sin pantalla de muerte) como espectador, justo donde murió.
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (p.isOnline() && p.isDead()) {
+                p.spigot().respawn();
+            }
+        }, 1L);
+
         if (creando) {
             return;
         }
         creando = true;
-        Bukkit.getScheduler().runTask(this, this::cambiarMundo);
+        // 200 ticks = 10 segundos de espera antes de crear el mundo nuevo.
+        Bukkit.getScheduler().runTaskLater(this, this::cambiarMundo, 200L);
     }
 
     @EventHandler
     public void alReaparecer(PlayerRespawnEvent e) {
+        Player jugador = e.getPlayer();
+
+        // Durante la espera: espectador justo donde murió.
+        Location lugar = lugaresDeMuerte.remove(jugador.getUniqueId());
+        if (lugar != null && lugar.getWorld() != null && creando) {
+            e.setRespawnLocation(lugar);
+            Bukkit.getScheduler().runTask(this, () -> jugador.setGameMode(GameMode.SPECTATOR));
+            return;
+        }
+
         if (base == null) {
             return;
         }
@@ -132,6 +158,9 @@ public final class MundoHardcore extends JavaPlugin implements Listener {
             boolean enGrupo = w.equals(base) || w.equals(base + "_nether") || w.equals(base + "_the_end");
             if (!enGrupo) {
                 p.teleport(actual.getSpawnLocation());
+                if (p.getGameMode() == GameMode.SPECTATOR) {
+                    p.setGameMode(GameMode.SURVIVAL);
+                }
             }
         });
     }
@@ -201,8 +230,11 @@ public final class MundoHardcore extends JavaPlugin implements Listener {
             estado.set("contador", contador);
             guardar();
 
-            // Se mueve a todos sin expulsar a nadie. Al que murió se le hace reaparecer
-            // directamente en el mundo nuevo (ver alReaparecer).
+            // Ya no hay que dejar a nadie donde murió: todos van al mundo nuevo.
+            lugaresDeMuerte.clear();
+
+            // Se mueve a todos sin expulsar a nadie. Los que esperaban de espectador
+            // vuelven a supervivencia en el mundo nuevo (ver reiniciar).
             Location destino = overworld.getSpawnLocation();
             for (Player p : new ArrayList<>(Bukkit.getOnlinePlayers())) {
                 if (p.isDead()) {
