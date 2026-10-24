@@ -1,5 +1,7 @@
 package com.mundohardcore;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Difficulty;
 import org.bukkit.GameMode;
@@ -8,6 +10,8 @@ import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -89,6 +93,28 @@ public final class MundoHardcore extends JavaPlugin implements Listener {
                 getLogger().severe("No se pudo cargar el mundo actual (" + base + "): " + ex.getMessage());
             }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Comandos
+    // ------------------------------------------------------------------
+
+    /** /seedreset: lo puede usar cualquiera. Borra el mundo actual y crea uno nuevo al instante. */
+    @Override
+    public boolean onCommand(CommandSender sender, Command comando, String etiqueta, String[] args) {
+        if (!comando.getName().equalsIgnoreCase("seedreset")) {
+            return false;
+        }
+        if (creando) {
+            sender.sendMessage(Component.text("Ya se está creando un mundo nuevo, espera un momento.", NamedTextColor.RED));
+            return true;
+        }
+        creando = true;
+        Bukkit.getServer().sendMessage(Component.text(
+                sender.getName() + " usó /seedreset: creando un mundo nuevo...", NamedTextColor.YELLOW));
+        // Siguiente tick: sin los 10 segundos de espera de la muerte.
+        Bukkit.getScheduler().runTask(this, this::cambiarMundo);
+        return true;
     }
 
     // ------------------------------------------------------------------
